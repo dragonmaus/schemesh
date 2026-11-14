@@ -130,12 +130,12 @@
   (linectx-return-set! lctx #f)       ; clear flag "user pressed ENTER"
   (linectx-redraw-set! lctx #t)       ; set flag "redraw prompt and lines"
   (linectx-mark-not-bol-set! lctx #t) ; set flag "highlight if prompt is not at bol"
-  (linectx-to-history lctx #f))       ; save vscreen to history and return it (or a shallow copy)
+  (linectx-to-history lctx #f))       ; save vscreen to history and shallow copy of it
 
 
 ;; repeatedly call (linectx-keytable-call) until ENTER is found and processed,
 ;; or until no more keytable matches are found.
-;; if user pressed ENTER, return a reference to internal vlines (linectx-vscreen)
+;; if user pressed ENTER, return a shallow copy of entered vlines
 ;; if waiting for more keypresses, return #t
 ;; if got end-of-file, return #f
 (define (linectx-keytable-iterate lctx)
