@@ -433,10 +433,10 @@
         (tty-restore!)
         ; restore job control to previous value
         (tty-job-control? old-job-control)
-        (try-eval-file quit-file-path)
         (signal-restore-sigwinch)
         (lineedit-flush lctx)
-        (linectx-save-history lctx)))))
+        (linectx-save-history lctx)
+        (try-eval-file quit-file-path)))))
 
 
 ;; parse (repl) options, and return a list of values suitable for calling (repl*)
