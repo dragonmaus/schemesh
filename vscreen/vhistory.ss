@@ -46,10 +46,13 @@
     (raise-assertf 'vhistory-path-set! "~s is not #f or string" path))
   (%vhistory-path-set! hist path))
 
-
 (define vhistory-empty? gbuffer-empty?)
+
 (define vhistory-length gbuffer-length)
-(define vhistory-clear! gbuffer-clear!)
+
+(define (vhistory-clear! hist)
+  (gbuffer-clear! hist)
+  (vhistory-last-temporary-set! hist #f))
 
 
 ;; return i-th vlines in history
@@ -61,6 +64,13 @@
 (define (vhistory-ref-edited? hist idx)
   (let ((pair (gbuffer-ref hist idx)))
     (not (vlines-equal-chars? (car pair) (cdr pair)))))
+
+
+(define (vhistory-delete! hist start end)
+  (let ((len (vhistory-length hist)))
+    (gbuffer-delete! hist start end)
+    (when (and (fx<? start len) (fx=? end len))
+      (vhistory-last-temporary-set! hist #f))))
 
 
 ;; iterate on vhistory lines, and call (proc i lines) on each one.
@@ -98,16 +108,18 @@
 ;;
 ;; limitation: removes immutable lines too, even if they are not duplicates
 (define (vhistory-delete-duplicates-right! hist)
-  (let ((new-len (fx+ 2
-          (let %loop ((i (fx- (vhistory-length hist) 2)))
-            (if (fx>=? i 0)
-              (let ((line1 (vhistory-ref hist i))
-                    (line2 (vhistory-ref hist (fx1+ i))))
-                (if (vlines-equal-chars? line1 line2)
-                  (%loop (fx1- i))
-                  i))
-              i)))))
-   (gbuffer-delete! hist new-len (vhistory-length hist))))
+  (let* ((old-len (vhistory-length hist))
+         (new-len (fx+ 2
+           (let %loop ((i (fx- old-len 2)))
+             (if (fx>=? i 0)
+               (let ((line1 (vhistory-ref hist i))
+                     (line2 (vhistory-ref hist (fx1+ i))))
+                 (if (vlines-equal-chars? line1 line2)
+                   (%loop (fx1- i))
+                   i))
+               i)))))
+     (unless (fx=? new-len old-len)
+       (vhistory-delete! hist new-len old-len))))
 
 
 (define (vhistory-last-temporary? hist)
@@ -116,7 +128,7 @@
 
 ;; step 1:
 ;;   if temporary? is #f and (vhistory-last-temporary?) is truish, then:
-;;     remove last vhistory element.
+;;     remove last vhistory element and set (vhistory-last-temporary?) to #f
 ;;
 ;; step 2:
 ;;   if lines are NOT equal to last vlines in history, then:
@@ -128,19 +140,21 @@
 ;;
 ;; return the stored shallow copy of lines - or the existing lines that prevented storing them
 (define (vhistory-insert-right! hist lines temporary?)
+  ;; (debugf "> vhistory-insert-right! history ~s" hist)
   (when (and (not temporary?) (vhistory-last-temporary? hist))
     (let ((len (vhistory-length hist)))
-      (gbuffer-delete! hist (fx1- len) len)))
+      (vhistory-delete! hist (fx1- len) len)))
     
   (let* ((len    (vhistory-length hist))
          (idx-eq (if temporary? #f (%vhistory-find-nearby hist len lines)))
          (lines  (if idx-eq (vhistory-ref hist idx-eq)
                             (vlines-shallow-copy lines))))
-    ;; (debugf "vhistory-insert-right! lines ~s, temporary? ~s, vhistory-last-temporary? ~s, idx-eq ~s" lines temporary? (vhistory-last-temporary? hist) idx-eq)
+    ;; (debugf ". vhistory-insert-right! lines ~s, temporary? ~s, vhistory-last-temporary? ~s, idx-eq ~s, len ~s" lines temporary? (vhistory-last-temporary? hist) idx-eq len)
     (unless idx-eq
       (let ((idx (if (vhistory-last-temporary? hist) (fx1- len) len)))
         (gbuffer-insert-at! hist idx (cons lines lines))))
     (vhistory-last-temporary-set! hist (and temporary? #t)) ;; store #f or #t, not arbitrary datum
+    ;; (debugf "< vhistory-insert-right! lines ~s, history ~s" lines hist)
     lines))
 
 
@@ -149,10 +163,11 @@
 ;;
 ;; return unspecified value
 (define (vhistory-set! hist idx lines)
-  ;; (debugf "vhistory-insert-right! idx ~s, len ~s, lines ~s" idx (vhistory-length hist) lines)
-  (assert* 'vhistory-set! (fx<? -1 idx (vhistory-length hist)))
+  ;; (debugf "vhistory-set! idx ~s, len ~s, lines ~s" idx (vhistory-length hist) lines)
   (assert-vlines? 'vhistory-set! lines)
-  (set-car! (gbuffer-ref hist idx) (vlines-shallow-copy lines)))
+  (let ((pair (gbuffer-ref hist idx)))
+    (unless (vlines-equal-chars? lines (car pair))
+      (set-car! pair (vlines-shallow-copy lines)))))
 
 
 ;; remove consecutive empty vlines before index idx in vhistory.
@@ -161,12 +176,14 @@
 ;;
 ;; limitation: removes immutable lines too, even if they are not empty
 (define (vhistory-delete-empty-lines! hist idx)
-  (let %loop ((i (fx1- (fxmin idx (vhistory-length hist)))))
-    (if (and (fx>=? i 0) (%vlines-empty? (vhistory-ref hist i)))
-      (begin
-        (gbuffer-delete! hist i (fx1+ i))
-        (%loop (fx1- i)))
-      i)))
+  (let* ((old-len (vhistory-length hist))
+         (pos
+           (let %loop ((i (fx1- (fxmin idx old-len))))
+             (if (and (fx>=? i 0) (%vlines-empty? (vhistory-ref hist i)))
+               (%loop (fx1- i))
+               i))))
+    (vhistory-delete! hist (fx1+ pos) old-len)
+    pos))
 
 
 (define (%vlines-empty? lines)

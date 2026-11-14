@@ -124,7 +124,7 @@
   ; also un-highlights bad parentheses and current parentheses
   (linectx-redraw-dirty lctx 'plain)
   (lineterm-move-dy lctx (fx- (fx1- (linectx-end-y lctx))
-                             (linectx-iy lctx))) ; move to last input line
+                              (linectx-iy lctx))) ; move to last input line
   (lineterm-write/u8 lctx 10)         ; advance tty to next line
   (linectx-term-xy-set! lctx 0 0)     ; set tty cursor to 0 0
   (linectx-return-set! lctx #f)       ; clear flag "user pressed ENTER"
